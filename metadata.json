@@ -1,0 +1,6 @@
+{
+  "name": "Coldmart",
+  "description": "Uma plataforma SaaS completa para venda de cursos, ebooks, mentorias, assinaturas, programa de afiliados, construtor de páginas, checkout otimizado, área de membros e gestão financeira, com tema de design Bento Grid Premium habilitado.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
