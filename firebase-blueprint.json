@@ -1,0 +1,152 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Account",
+      "description": "User profile with roles and balances.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "producer", "affiliate", "buyer"] },
+        "balance": { "type": "number" },
+        "balancePending": { "type": "number" },
+        "avatar": { "type": "string" },
+        "password": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role", "balance", "balancePending"]
+    },
+    "Product": {
+      "title": "Infoproduct",
+      "description": "Digital ebook, course, subscription, or mentorship.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "type": { "type": "string", "enum": ["course", "ebook", "subscription", "mentorship"] },
+        "creatorId": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "commission": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending_approval", "active", "rejected"] },
+        "rating": { "type": "number" },
+        "ratingCount": { "type": "number" },
+        "category": { "type": "string" },
+        "image": { "type": "string" },
+        "enrolledCount": { "type": "number" }
+      },
+      "required": ["id", "title", "price", "type", "creatorId", "status"]
+    },
+    "Sale": {
+      "title": "Sale Transactions",
+      "description": "Completed digital sales transactions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "productId": { "type": "string" },
+        "productTitle": { "type": "string" },
+        "productImage": { "type": "string" },
+        "amount": { "type": "number" },
+        "buyerName": { "type": "string" },
+        "buyerEmail": { "type": "string" },
+        "status": { "type": "string", "enum": ["completed", "pending", "refunded"] },
+        "paymentMethod": { "type": "string" },
+        "creatorCommission": { "type": "number" },
+        "affiliateCommission": { "type": "number" },
+        "affiliateId": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["id", "productId", "productTitle", "amount", "buyerEmail", "status", "paymentMethod", "date"]
+    },
+    "AffiliationRule": {
+      "title": "Affiliation Rule",
+      "description": "Rules and links governing product affiliate promotions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "affiliateId": { "type": "string" },
+        "productId": { "type": "string" },
+        "productTitle": { "type": "string" },
+        "productPrice": { "type": "number" },
+        "commissionPercent": { "type": "number" },
+        "linkCode": { "type": "string" },
+        "clicks": { "type": "number" },
+        "salesCount": { "type": "number" },
+        "earnings": { "type": "number" }
+      },
+      "required": ["id", "affiliateId", "productId", "linkCode"]
+    },
+    "Ticket": {
+      "title": "Support Ticket",
+      "description": "Support query ticket requested by a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "subject": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "resolved"] },
+        "category": { "type": "string", "enum": ["payment", "access", "partnership", "other"] },
+        "date": { "type": "string" }
+      },
+      "required": ["id", "userEmail", "subject", "status", "category"]
+    },
+    "LandingPage": {
+      "title": "Landing Page Design",
+      "description": "Bespoke builder data for customized pages.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "productId": { "type": "string" },
+        "theme": { "type": "string", "enum": ["modern", "minimalist", "cosmic", "warm"] }
+      },
+      "required": ["id", "productId", "theme"]
+    },
+    "TransferRequest": {
+      "title": "Withdrawal Transfer Request",
+      "description": "Request made by a merchant to withdraw funds using Pix.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "pixKey": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["id", "userId", "amount", "status", "pixKey", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Public and private user profiles."
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Public digital marketplace courses and mentorships."
+    },
+    "/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "Financial sales logs."
+    },
+    "/affiliations/{affiliationId}": {
+      "schema": "AffiliationRule",
+      "description": "Affiliates registry data."
+    },
+    "/tickets/{ticketId}": {
+      "schema": "Ticket",
+      "description": "Customer support requests list."
+    },
+    "/pages/{pageId}": {
+      "schema": "LandingPage",
+      "description": "Custom templates for digital page building."
+    },
+    "/transfers/{transferId}": {
+      "schema": "TransferRequest",
+      "description": "Financial pix cashout audit logs."
+    }
+  }
+}

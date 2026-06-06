@@ -8,6 +8,8 @@ import {
   DEFAULT_AFFILIATIONS, DEFAULT_TICKETS, DEFAULT_PAGES, DEFAULT_TRANSFERS 
 } from '../defaultData';
 import { enrichProductData } from '../utils/quizCommentGenerator';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { collection, doc, setDoc, getDocs, deleteDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 
 interface ColdmartContextType {
   users: User[];
@@ -224,6 +226,85 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('coldmart_transfers', JSON.stringify(transfers));
   }, [transfers]);
 
+  // Seeding initial data to Firebase if collections are empty
+  useEffect(() => {
+    const seedDatabaseRef = async () => {
+      if (!db) return;
+      try {
+        const checkAndSeed = async (colName: string, defaults: any[]) => {
+          const colRef = collection(db, colName);
+          const snapshot = await getDocs(colRef);
+          if (snapshot.empty) {
+            console.log(`[Firebase] Seeding empty collection '${colName}' with default dataset...`);
+            for (const item of defaults) {
+              await setDoc(doc(db, colName, item.id), item);
+            }
+          }
+        };
+        await checkAndSeed('users', DEFAULT_USERS);
+        await checkAndSeed('products', DEFAULT_PRODUCTS);
+        await checkAndSeed('sales', DEFAULT_SALES);
+        await checkAndSeed('affiliations', DEFAULT_AFFILIATIONS);
+        await checkAndSeed('tickets', DEFAULT_TICKETS);
+        await checkAndSeed('pages', DEFAULT_PAGES);
+        await checkAndSeed('transfers', DEFAULT_TRANSFERS);
+        console.log("[Firebase] Seeding process checked completed.");
+      } catch (err) {
+        console.warn("[Firebase] Seeding warning (likely restricted permissions or setup delay):", err);
+      }
+    };
+    seedDatabaseRef();
+  }, []);
+
+  // Sync state in real-time from active Firestore collections (where permissions allow)
+  useEffect(() => {
+    if (!db) return;
+
+    const safeSync = <T,>(
+      colName: string,
+      setData: React.Dispatch<React.SetStateAction<T[]>>
+    ) => {
+      try {
+        return onSnapshot(
+          collection(db, colName),
+          (snapshot) => {
+            if (!snapshot.empty) {
+              const list: T[] = [];
+              snapshot.forEach((d) => {
+                list.push(d.data() as T);
+              });
+              setData(list);
+            }
+          },
+          (error) => {
+            console.log(`[Firebase] Firestore read restricted/denied on '${colName}' (handled safely using offline fallback):`, error.message);
+          }
+        );
+      } catch (err) {
+        console.warn(`[Firebase] Error attaching snapshot on '${colName}':`, err);
+      }
+    };
+
+    const unsubUsers = safeSync<User>('users', setUsers);
+    const unsubProducts = safeSync<Product>('products', setProducts);
+    const unsubSales = safeSync<Sale>('sales', setSales);
+    const unsubAffiliations = safeSync<AffiliationRule>('affiliations', setAffiliations);
+    const unsubTickets = safeSync<Ticket>('tickets', setTickets);
+    const unsubPages = safeSync<LandingPage>('pages', setPages);
+    const unsubTransfers = safeSync<TransferRequest>('transfers', setTransfers);
+
+    return () => {
+      unsubUsers?.();
+      unsubProducts?.();
+      unsubSales?.();
+      unsubAffiliations?.();
+      unsubTickets?.();
+      unsubPages?.();
+      unsubTransfers?.();
+    };
+  }, []);
+
+
   // Actions implementation
   const switchRole = (role: UserRole) => {
     const found = users.find(u => u.role === role);
@@ -244,6 +325,13 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       };
       setUsers(prev => [...prev, newUser]);
       setCurrentUser(newUser);
+
+      // Sincronizar com Firebase
+      if (db) {
+        setDoc(doc(db, 'users', newUser.id), newUser).catch((err) => {
+          handleFirestoreError(err, OperationType.WRITE, `users/${newUser.id}`);
+        });
+      }
     }
   };
 
@@ -252,6 +340,13 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const updated = { ...currentUser, name, email, avatar };
     setCurrentUser(updated);
     setUsers(prev => prev.map(u => u.id === currentUser.id ? updated : u));
+
+    // Sincronizar com Firebase
+    if (db) {
+      setDoc(doc(db, 'users', updated.id), updated).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `users/${updated.id}`);
+      });
+    }
   };
 
   const addProduct = (newProd: Omit<Product, 'id' | 'creatorId' | 'creatorName' | 'rating' | 'ratingCount' | 'enrolledCount'>) => {
@@ -318,6 +413,16 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ]
     };
     setPages(prev => [newPage, ...prev]);
+
+    // Sincronizar com Firebase
+    if (db) {
+      setDoc(doc(db, 'products', product.id), product).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `products/${product.id}`);
+      });
+      setDoc(doc(db, 'pages', newPage.id), newPage).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `pages/${newPage.id}`);
+      });
+    }
   };
 
   const updateProduct = (updatedProd: Product) => {
@@ -330,18 +435,46 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       image: finalImg
     };
     setProducts(prev => prev.map(p => p.id === sanitized.id ? sanitized : p));
+
+    // Sincronizar com Firebase
+    if (db) {
+      setDoc(doc(db, 'products', sanitized.id), sanitized).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `products/${sanitized.id}`);
+      });
+    }
   };
 
   const deleteProduct = (id: string) => {
     setProducts(prev => prev.filter(p => p.id !== id));
+
+    // Sincronizar com Firebase
+    if (db) {
+      deleteDoc(doc(db, 'products', id)).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `products/${id}`);
+      });
+    }
   };
 
   const approveProduct = (id: string) => {
     setProducts(prev => prev.map(p => p.id === id ? { ...p, status: 'active' } : p));
+
+    // Sincronizar com Firebase
+    if (db) {
+      updateDoc(doc(db, 'products', id), { status: 'active' }).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `products/${id}`);
+      });
+    }
   };
 
   const rejectProduct = (id: string) => {
     setProducts(prev => prev.map(p => p.id === id ? { ...p, status: 'rejected' } : p));
+
+    // Sincronizar com Firebase
+    if (db) {
+      updateDoc(doc(db, 'products', id), { status: 'rejected' }).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `products/${id}`);
+      });
+    }
   };
 
   const requestAffiliation = (productId: string) => {
@@ -368,12 +501,26 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     setAffiliations(prev => [...prev, newAff]);
+
+    // Sincronizar com Firebase
+    if (db) {
+      setDoc(doc(db, 'affiliations', newAff.id), newAff).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `affiliations/${newAff.id}`);
+      });
+    }
   };
 
   const incrementClicks = (code: string) => {
     setAffiliations(prev => prev.map(aff => {
       if (aff.linkCode === code) {
-        return { ...aff, clicks: aff.clicks + 1 };
+        const updated = { ...aff, clicks: aff.clicks + 1 };
+        // Sincronizar com Firebase
+        if (db) {
+          updateDoc(doc(db, 'affiliations', aff.id), { clicks: updated.clicks }).catch((err) => {
+            handleFirestoreError(err, OperationType.WRITE, `affiliations/${aff.id}`);
+          });
+        }
+        return updated;
       }
       return aff;
     }));
@@ -450,17 +597,40 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // Push sale to list
       setSales(prev => [newSale, ...prev]);
 
+      // Sincronizar com Firebase
+      if (db) {
+        setDoc(doc(db, 'sales', newSale.id), newSale).catch((err) => {
+          handleFirestoreError(err, OperationType.WRITE, `sales/${newSale.id}`);
+        });
+      }
+
       if (params.paymentMethod !== 'boleto') {
         // Adjust product enrollment count
-        setProducts(prev => prev.map(p => p.id === prod.id ? { ...p, enrolledCount: p.enrolledCount + 1 } : p));
+        setProducts(prev => prev.map(p => {
+          if (p.id === prod.id) {
+            const updated = { ...p, enrolledCount: p.enrolledCount + 1 };
+            if (db) {
+              updateDoc(doc(db, 'products', p.id), { enrolledCount: updated.enrolledCount }).catch(() => {});
+            }
+            return updated;
+          }
+          return p;
+        }));
 
         // Update creator balance
         setUsers(prev => prev.map(u => {
           if (u.id === prod.creatorId) {
-            return {
+            const updated = {
               ...u,
               balance: Number((u.balance + creatorCommission).toFixed(2))
             };
+            if (db) {
+              updateDoc(doc(db, 'users', u.id), { balance: updated.balance }).catch(() => {});
+            }
+            if (currentUser && currentUser.id === u.id) {
+              setCurrentUser(updated);
+            }
+            return updated;
           }
           return u;
         }));
@@ -469,10 +639,17 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (affiliateId) {
           setUsers(prev => prev.map(u => {
             if (u.id === affiliateId) {
-              return {
+              const updated = {
                 ...u,
                 balance: Number((u.balance + affiliateCommission).toFixed(2))
               };
+              if (db) {
+                updateDoc(doc(db, 'users', u.id), { balance: updated.balance }).catch(() => {});
+              }
+              if (currentUser && currentUser.id === u.id) {
+                setCurrentUser(updated);
+              }
+              return updated;
             }
             return u;
           }));
@@ -480,11 +657,15 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           // Track affiliate sales metrics
           setAffiliations(prev => prev.map(a => {
             if (a.linkCode === params.affiliateCode && a.productId === prod.id) {
-              return {
+              const updated = {
                 ...a,
                 salesCount: a.salesCount + 1,
                 earnings: Number((a.earnings + affiliateCommission).toFixed(2))
               };
+              if (db) {
+                setDoc(doc(db, 'affiliations', a.id), updated).catch(() => {});
+              }
+              return updated;
             }
             return a;
           }));
@@ -535,6 +716,16 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setUsers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
     setTransfers(prev => [newRequest, ...prev]);
 
+    // Sincronizar com Firebase
+    if (db) {
+      setDoc(doc(db, 'transfers', newRequest.id), newRequest).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `transfers/${newRequest.id}`);
+      });
+      setDoc(doc(db, 'users', updatedUser.id), updatedUser).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `users/${updatedUser.id}`);
+      });
+    }
+
     return { success: true, message: 'Solicitação de saque enviada com sucesso! Aguarde aprovação.' };
   };
 
@@ -544,6 +735,13 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setTransfers(prev => prev.map(t => t.id === id ? { ...t, status: 'approved' } : t));
     
+    // Sincronizar transferência com Firebase
+    if (db) {
+      updateDoc(doc(db, 'transfers', id), { status: 'approved' }).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `transfers/${id}`);
+      });
+    }
+
     // Clear the pending balance from the target user
     setUsers(prev => prev.map(u => {
       if (u.id === req.userId) {
@@ -551,6 +749,11 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const updated = { ...u, balancePending: Number(pending.toFixed(2)) };
         if (currentUser && currentUser.id === u.id) {
           setCurrentUser(updated);
+        }
+        
+        // Sincronizar usuário com Firebase
+        if (db) {
+          updateDoc(doc(db, 'users', u.id), { balancePending: updated.balancePending }).catch(() => {});
         }
         return updated;
       }
@@ -564,6 +767,13 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setTransfers(prev => prev.map(t => t.id === id ? { ...t, status: 'rejected' } : t));
 
+    // Sincronizar transferência com Firebase
+    if (db) {
+      updateDoc(doc(db, 'transfers', id), { status: 'rejected' }).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `transfers/${id}`);
+      });
+    }
+
     // Refund available balance to the target user
     setUsers(prev => prev.map(u => {
       if (u.id === req.userId) {
@@ -575,6 +785,14 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
         if (currentUser && currentUser.id === u.id) {
           setCurrentUser(updated);
+        }
+
+        // Sincronizar usuário com Firebase
+        if (db) {
+          updateDoc(doc(db, 'users', u.id), { 
+            balance: updated.balance, 
+            balancePending: updated.balancePending 
+          }).catch(() => {});
         }
         return updated;
       }
@@ -591,6 +809,13 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return [...prev, updatedPage];
       }
     });
+
+    // Sincronizar com Firebase
+    if (db) {
+      setDoc(doc(db, 'pages', updatedPage.id), updatedPage).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `pages/${updatedPage.id}`);
+      });
+    }
   };
 
   const getLandingPage = (productId: string): LandingPage => {
@@ -640,6 +865,13 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setTickets(prev => [newTicket, ...prev]);
 
+    // Sincronizar com Firebase
+    if (db) {
+      setDoc(doc(db, 'tickets', newTicket.id), newTicket).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `tickets/${newTicket.id}`);
+      });
+    }
+
     // Simulated instant Support AI Assistant answering
     setTimeout(() => {
       let aiText = `Olá, ${currentUser.name}! Eu sou o ColdBot AI, o assistente inteligente da Coldmart. `;
@@ -672,6 +904,13 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           messages: [...t.messages, newMessage]
         };
 
+        // Sincronizar com Firebase
+        if (db) {
+          setDoc(doc(db, 'tickets', ticketId), updated).catch((err) => {
+            handleFirestoreError(err, OperationType.WRITE, `tickets/${ticketId}`);
+          });
+        }
+
         // If the user replied, schedule another automated AI quick chat companion check
         if (sender === 'user') {
           setTimeout(() => {
@@ -700,7 +939,11 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             };
             setTickets(innerPrev => innerPrev.map(innerT => {
               if (innerT.id === ticketId) {
-                return { ...innerT, messages: [...innerT.messages, botMsg] };
+                const subUpdated = { ...innerT, messages: [...innerT.messages, botMsg] };
+                if (db) {
+                  setDoc(doc(db, 'tickets', ticketId), subUpdated).catch(() => {});
+                }
+                return subUpdated;
               }
               return innerT;
             }));
@@ -714,7 +957,16 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const resolveTicket = (ticketId: string) => {
-    setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: 'resolved' } : t));
+    setTickets(prev => prev.map(t => {
+      if (t.id === ticketId) {
+        const updated = { ...t, status: 'resolved' as const };
+        if (db) {
+          updateDoc(doc(db, 'tickets', ticketId), { status: 'resolved' }).catch(() => {});
+        }
+        return updated;
+      }
+      return t;
+    }));
   };
 
   const toggleLessonCompletion = (productId: string, lessonId: string) => {
@@ -724,7 +976,12 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ...m,
           lessons: m.lessons.map(l => l.id === lessonId ? { ...l, completed: !l.completed } : l)
         }));
-        return { ...p, modules: updatedModules };
+        const updatedProduct = { ...p, modules: updatedModules };
+
+        if (db) {
+          setDoc(doc(db, 'products', productId), updatedProduct).catch(() => {});
+        }
+        return updatedProduct;
       }
       return p;
     }));
@@ -735,11 +992,16 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (p.id === productId) {
         const newCount = p.ratingCount + 1;
         const newRating = Number(((p.rating * p.ratingCount + rating) / newCount).toFixed(1));
-        return {
+        const updatedProduct = {
           ...p,
           rating: newRating,
           ratingCount: newCount
         };
+
+        if (db) {
+          setDoc(doc(db, 'products', productId), updatedProduct).catch(() => {});
+        }
+        return updatedProduct;
       }
       return p;
     }));
@@ -775,6 +1037,14 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setUsers(prev => [...prev, newUser]);
     setCurrentUser(newUser);
+
+    // Sincronizar com Firebase
+    if (db) {
+      setDoc(doc(db, 'users', newUser.id), newUser).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `users/${newUser.id}`);
+      });
+    }
+
     return newUser;
   };
 
