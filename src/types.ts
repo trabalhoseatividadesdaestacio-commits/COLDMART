@@ -9,6 +9,10 @@ export interface User {
   balancePending: number;
   avatar: string;
   password?: string;
+  cnpj?: string;
+  corporateName?: string;
+  tradingName?: string;
+  corporatePixKey?: string;
 }
 
 export type ProductType = 'course' | 'ebook' | 'subscription' | 'mentorship';
@@ -36,6 +40,15 @@ export interface QuizQuestion {
   correctOptionIndex: number;
 }
 
+export interface ProductReview {
+  id: string;
+  userName: string;
+  userAvatar?: string;
+  rating?: number; // 1 to 5 stars, optional
+  comment?: string; // optional
+  date: string;
+}
+
 export interface Product {
   id: string;
   title: string;
@@ -54,6 +67,7 @@ export interface Product {
   modules: CourseModule[];
   quiz?: QuizQuestion[];
   classroomComments?: { name: string; text: string; date: string; isInstructor?: boolean }[];
+  reviews?: ProductReview[];
 }
 
 export interface Sale {

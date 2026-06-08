@@ -12,7 +12,11 @@
         "balance": { "type": "number" },
         "balancePending": { "type": "number" },
         "avatar": { "type": "string" },
-        "password": { "type": "string" }
+        "password": { "type": "string" },
+        "cnpj": { "type": "string" },
+        "corporateName": { "type": "string" },
+        "tradingName": { "type": "string" },
+        "corporatePixKey": { "type": "string" }
       },
       "required": ["id", "name", "email", "role", "balance", "balancePending"]
     },
@@ -34,7 +38,8 @@
         "ratingCount": { "type": "number" },
         "category": { "type": "string" },
         "image": { "type": "string" },
-        "enrolledCount": { "type": "number" }
+        "enrolledCount": { "type": "number" },
+        "reviews": { "type": "array" }
       },
       "required": ["id", "title", "price", "type", "creatorId", "status"]
     },

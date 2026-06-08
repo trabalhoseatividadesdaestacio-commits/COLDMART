@@ -25,6 +25,7 @@ interface ColdmartContextType {
   // Actions
   switchRole: (role: UserRole) => void;
   updateUserProfile: (name: string, email: string, avatar: string) => void;
+  updateUserCorporateDetails: (cnpj: string, corporateName: string, tradingName: string, corporatePixKey: string) => void;
   addProduct: (product: Omit<Product, 'id' | 'creatorId' | 'creatorName' | 'rating' | 'ratingCount' | 'enrolledCount'>) => void;
   updateProduct: (product: Product) => void;
   deleteProduct: (id: string) => void;
@@ -58,6 +59,7 @@ interface ColdmartContextType {
   // Members Area
   toggleLessonCompletion: (productId: string, lessonId: string) => void;
   submitCourseRating: (productId: string, rating: number) => void;
+  submitProductReview: (productId: string, review: { userName: string; rating?: number; comment?: string }) => void;
 
   // New Auth Gateways
   signupUser: (name: string, email: string, role: UserRole, password?: string) => User;
@@ -338,6 +340,20 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateUserProfile = (name: string, email: string, avatar: string) => {
     if (!currentUser) return;
     const updated = { ...currentUser, name, email, avatar };
+    setCurrentUser(updated);
+    setUsers(prev => prev.map(u => u.id === currentUser.id ? updated : u));
+
+    // Sincronizar com Firebase
+    if (db) {
+      setDoc(doc(db, 'users', updated.id), updated).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `users/${updated.id}`);
+      });
+    }
+  };
+
+  const updateUserCorporateDetails = (cnpj: string, corporateName: string, tradingName: string, corporatePixKey: string) => {
+    if (!currentUser) return;
+    const updated = { ...currentUser, cnpj, corporateName, tradingName, corporatePixKey };
     setCurrentUser(updated);
     setUsers(prev => prev.map(u => u.id === currentUser.id ? updated : u));
 
@@ -715,13 +731,15 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: false, message: 'Saldo disponível insuficiente para realizar este saque.' };
     }
 
+    const isPlatformAdmin = currentUser.role === 'admin';
+
     // Deduct from current user balance and log transfer
     const newRequest: TransferRequest = {
       id: `trsf_${Date.now()}`,
       userId: currentUser.id,
-      userName: currentUser.name,
+      userName: currentUser.name + (isPlatformAdmin ? ' (Administrador)' : ''),
       amount,
-      status: 'pending',
+      status: isPlatformAdmin ? 'approved' : 'pending',
       pixKey,
       date: new Date().toISOString()
     };
@@ -729,7 +747,7 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const updatedUser = {
       ...currentUser,
       balance: Number((currentUser.balance - amount).toFixed(2)),
-      balancePending: Number((currentUser.balancePending + amount).toFixed(2)) // Move to pending-clearing while review is active
+      balancePending: isPlatformAdmin ? currentUser.balancePending : Number((currentUser.balancePending + amount).toFixed(2))
     };
 
     setCurrentUser(updatedUser);
@@ -746,7 +764,12 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
     }
 
-    return { success: true, message: 'Solicitação de saque enviada com sucesso! Aguarde aprovação.' };
+    return { 
+      success: true, 
+      message: isPlatformAdmin 
+        ? 'Saque corporativo realizado e executado com sucesso e debitado do saldo administrativo!' 
+        : 'Solicitação de saque enviada com sucesso! Aguarde aprovação.' 
+    };
   };
 
   const approveWithdrawal = (id: string) => {
@@ -1027,6 +1050,45 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }));
   };
 
+  const submitProductReview = (productId: string, reviewData: { userName: string; rating?: number; comment?: string }) => {
+    setProducts(prev => prev.map(p => {
+      if (p.id === productId) {
+        const existingReviews = p.reviews || [];
+        const newReview = {
+          id: `rev_${Date.now()}`,
+          userName: reviewData.userName,
+          userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+          rating: reviewData.rating,
+          comment: reviewData.comment,
+          date: new Date().toLocaleDateString('pt-BR')
+        };
+        
+        const updatedReviews = [newReview, ...existingReviews];
+        
+        let newRating = p.rating;
+        let newCount = p.ratingCount;
+        
+        if (reviewData.rating !== undefined && reviewData.rating > 0) {
+          newCount = p.ratingCount + 1;
+          newRating = Number(((p.rating * p.ratingCount + reviewData.rating) / newCount).toFixed(1));
+        }
+        
+        const updatedProduct = {
+          ...p,
+          reviews: updatedReviews,
+          rating: newRating,
+          ratingCount: newCount
+        };
+
+        if (db) {
+          setDoc(doc(db, 'products', productId), updatedProduct).catch(() => {});
+        }
+        return updatedProduct;
+      }
+      return p;
+    }));
+  };
+
   const signupUser = (name: string, email: string, role: UserRole, password?: string): User => {
     if (role === 'admin') {
       throw new Error('Não é permitido criar novas contas com o perfil de Administrador.');
@@ -1114,6 +1176,7 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       buyerEnrolledIds,
       switchRole,
       updateUserProfile,
+      updateUserCorporateDetails,
       addProduct,
       updateProduct,
       deleteProduct,
@@ -1132,6 +1195,7 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       resolveTicket,
       toggleLessonCompletion,
       submitCourseRating,
+      submitProductReview,
       signupUser,
       loginUser,
       logoutUser

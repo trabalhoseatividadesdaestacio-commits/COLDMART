@@ -3,7 +3,7 @@ import { useColdmart } from '../context/ColdmartContext';
 import { Product } from '../types';
 import { 
   CreditCard, QrCode, ClipboardCheck, ArrowRight, ArrowLeft, ShieldCheck, 
-  HelpCircle, Sparkles, Tag, Check, CheckCircle2, Ticket, AlertCircle
+  HelpCircle, Sparkles, Tag, Check, CheckCircle2, Ticket, AlertCircle, Star
 } from 'lucide-react';
 
 interface CheckoutViewProps {
@@ -19,7 +19,39 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   onPaymentSuccess,
   onNavigateToMarketplace
 }) => {
-  const { products, processPurchase, currentUser } = useColdmart();
+  const { products, processPurchase, currentUser, submitProductReview } = useColdmart();
+  
+  // Review form state
+  const [reviewRating, setReviewRating] = useState<number | undefined>(undefined);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewerName, setReviewerName] = useState(currentUser?.name || '');
+  const [hoveredStar, setHoveredStar] = useState<number | null>(null);
+  const [reviewSuccessMessage, setReviewSuccessMessage] = useState(false);
+
+  useEffect(() => {
+    if (currentUser) {
+      setReviewerName(currentUser.name);
+    }
+  }, [currentUser]);
+
+  const handleReviewSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (reviewRating === undefined && !reviewComment.trim()) {
+      alert('Selecione uma nota em estrelas ou digite um comentário antes de enviar.');
+      return;
+    }
+    submitProductReview(productId, {
+      userName: reviewerName.trim() || 'Comprador Anonimizado',
+      rating: reviewRating,
+      comment: reviewComment.trim() || undefined
+    });
+    setReviewSuccessMessage(true);
+    setReviewComment('');
+    setReviewRating(undefined);
+    setTimeout(() => {
+      setReviewSuccessMessage(false);
+    }, 4500);
+  };
   
   // Sincronizar produtos de forma puramente derivada para evitar o flash irritante de erro na renderização inicial
   const targetProduct = useMemo(() => products.find(p => p.id === productId) || null, [products, productId]);
@@ -580,39 +612,202 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
             </form>
 
-            {/* Testimonials and Social Proof Board */}
-            <div className="mt-8 border-t border-gray-150 dark:border-zinc-900 pt-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="font-bold text-xs uppercase tracking-wider text-gray-400 dark:text-zinc-500">Depoimentos & Experiências de Alunos</h4>
-                <div className="flex items-center gap-1 text-xs text-amber-500 font-bold font-mono">
-                  <span>★ 4.9 / 5.0</span>
-                  <span className="text-zinc-400 font-normal">({targetProduct.ratingCount || 120} avaliações)</span>
+            {/* Dynamic Product Reviews Feed & Evaluation Form */}
+            <div className="mt-8 border-t border-gray-150 dark:border-zinc-900 pt-6 space-y-6">
+              
+              {/* Reviews Header and summary */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="font-bold text-xs uppercase tracking-wider text-gray-400 dark:text-zinc-500">
+                    Depoimentos & Avaliações do Produto
+                  </h4>
+                  <p className="text-[11px] text-gray-500 dark:text-zinc-400">Total acumulado de feedbacks deixados por nossos alunos</p>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-900 border border-gray-150 dark:border-zinc-850 rounded-xl text-xs font-bold shrink-0">
+                  <Star className="w-4 h-4 fill-amber-500 text-amber-500" />
+                  <span className="text-amber-550 dark:text-amber-400 font-mono text-sm">{targetProduct.rating > 0 ? targetProduct.rating : 'Sem Notas'}</span>
+                  <span className="text-gray-400 dark:text-zinc-500 font-normal">({targetProduct.ratingCount || 120} avaliações)</span>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-4 bg-white dark:bg-zinc-950 rounded-2xl border border-gray-150 dark:border-zinc-850 shadow-sm space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-gray-900 dark:text-zinc-200">Rômulo Albuquerque</span>
-                    <span className="text-[10px] text-emerald-500 font-bold font-mono flex items-center gap-0.5">
-                      <Check className="w-3 h-3 text-emerald-500" /> Aluno Verificado
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-gray-650 dark:text-zinc-400 leading-normal italic">
-                    "Sensacional! O processamento do Pix foi instantâneo, os materiais vieram todos certinhos e em PDF. A plataforma é extremamente profissional e rápida."
-                  </p>
-                </div>
-                <div className="p-4 bg-white dark:bg-zinc-950 rounded-2xl border border-gray-150 dark:border-zinc-850 shadow-sm space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-gray-900 dark:text-zinc-200">Karina S. Gouveia</span>
-                    <span className="text-[10px] text-emerald-500 font-bold font-mono flex items-center gap-0.5">
-                      <Check className="w-3 h-3 text-emerald-500" /> Compra Segura
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-gray-650 dark:text-zinc-400 leading-normal italic">
-                    "O suporte com o Tutor AI tirou minhas dúvidas de PostgreSQL e CORS em menos de 2 minutos. Com certeza voltarei a comprar os novos lançamentos daqui!"
-                  </p>
-                </div>
+
+              {/* Combined lists of custom product reviews + beautiful fallbacks */}
+              <div className="space-y-4">
+                {(() => {
+                  const userAddedReviews = targetProduct.reviews || [];
+                  const preloadedReviews = [
+                    {
+                      id: 'def_1',
+                      userName: 'Rômulo Albuquerque',
+                      userAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
+                      rating: 5,
+                      comment: 'Sensacional! O processamento do Pix foi instantâneo, os materiais vieram todos certinhos e em PDF. A plataforma é extremamente profissional e rápida.',
+                      date: '02/06/2026'
+                    },
+                    {
+                      id: 'def_2',
+                      userName: 'Karina S. Gouveia',
+                      userAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80',
+                      rating: 5,
+                      comment: 'O suporte com o Tutor AI tirou minhas dúvidas de PostgreSQL e CORS em menos de 2 minutos. Com certeza voltarei a comprar os novos lançamentos daqui!',
+                      date: '05/06/2026'
+                    }
+                  ];
+                  
+                  const displayReviews = [...userAddedReviews, ...preloadedReviews];
+                  
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {displayReviews.map((rev) => (
+                        <div key={rev.id} className="p-4 bg-white dark:bg-zinc-950 rounded-2xl border border-gray-150 dark:border-zinc-850 shadow-sm flex gap-3 text-left">
+                          <img 
+                            src={rev.userAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'} 
+                            alt={rev.userName} 
+                            className="w-10 h-10 rounded-full object-cover border border-zinc-200 dark:border-zinc-800 shrink-0"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="flex-1 space-y-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-gray-900 dark:text-zinc-200 truncate">{rev.userName}</span>
+                              <span className="text-[9px] text-gray-400 font-mono shrink-0">{rev.date}</span>
+                            </div>
+                            
+                            {/* Stars rating rendering (ONLY IF exists, since rating is optional) */}
+                            {rev.rating !== undefined && rev.rating > 0 ? (
+                              <div className="flex items-center gap-0.5 py-0.5">
+                                {[1, 2, 3, 4, 5].map((s) => (
+                                  <Star 
+                                    key={s} 
+                                    className={`w-3 h-3 ${s <= (rev.rating || 0) ? 'fill-amber-500 text-amber-500' : 'text-gray-300 dark:text-zinc-700'}`} 
+                                  />
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="py-0.5">
+                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-900 text-zinc-500 font-medium font-mono uppercase tracking-wider inline-block">
+                                  Apenas Comentário
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Comment text (ONLY IF exists, since comment is optional) */}
+                            {rev.comment ? (
+                              <p className="text-[11px] text-gray-650 dark:text-zinc-400 leading-normal italic line-clamp-3">
+                                "{rev.comment}"
+                              </p>
+                            ) : (
+                              <p className="text-[10px] text-gray-400 dark:text-zinc-500 leading-normal italic">
+                                Deixou uma nota de {rev.rating} estrelas sem comentário escrito.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
+
+              {/* Evaluation Interactive Form */}
+              <div className="bg-zinc-50/50 dark:bg-zinc-900/10 border border-gray-150 dark:border-zinc-850 rounded-2xl p-5 space-y-4 text-left">
+                <div>
+                  <h5 className="font-extrabold text-xs text-gray-950 dark:text-white uppercase tracking-wider">Deixe Sua Avaliação</h5>
+                  <p className="text-[11px] text-gray-500 dark:text-zinc-400 text-slate-400">Insira sua nota de 1 a 5 estrelas e/ou escreva um comentário sobre o produto (ambos opcionais).</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    
+                    {/* Name selection */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Seu Nome para exibição</label>
+                      <input 
+                        type="text"
+                        value={reviewerName}
+                        onChange={(e) => setReviewerName(e.target.value)}
+                        placeholder="Ex: Marta S. Silva"
+                        className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-850 rounded-xl px-3 py-2 text-xs focus:border-blue-500 focus:outline-none dark:text-white"
+                      />
+                    </div>
+
+                    {/* Highly interactive Star Selector */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-widest mb-1.55">Avaliação em estrelas (opcional)</label>
+                      <div className="flex items-center gap-1.5 h-8">
+                        {[1, 2, 3, 4, 5].map((star) => {
+                          const isGold = hoveredStar !== null ? star <= hoveredStar : star <= (reviewRating || 0);
+                          return (
+                            <button
+                              key={star}
+                              type="button"
+                              onClick={() => {
+                                if (reviewRating === star) {
+                                  setReviewRating(undefined);
+                                } else {
+                                  setReviewRating(star);
+                                }
+                              }}
+                              onMouseEnter={() => setHoveredStar(star)}
+                              onMouseLeave={() => setHoveredStar(null)}
+                              className="focus:outline-none transition-transform hover:scale-110 active:scale-95 cursor-pointer"
+                              title={`${star} Estrelas`}
+                            >
+                              <Star 
+                                className={`w-5 h-5 transition-all ${
+                                  isGold 
+                                    ? 'fill-amber-500 text-amber-500' 
+                                    : 'text-gray-300 dark:text-zinc-700 hover:text-amber-400'
+                                }`} 
+                              />
+                            </button>
+                          );
+                        })}
+                        
+                        {/* Status label */}
+                        <span className="text-[10px] font-bold font-mono text-zinc-500 ml-2">
+                          {reviewRating ? `${reviewRating} Estrelas` : 'Sem Nota'}
+                        </span>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* Comment Input Textarea */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 flex justify-between">
+                      <span>Seu Comentário ou Crítica (opcional)</span>
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      placeholder="Fale um pouco sobre o conteúdo do curso, facilidade de compra, etc..."
+                      className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-850 rounded-xl px-3 py-2 text-xs focus:border-blue-500 focus:outline-none dark:text-white resize-none"
+                    />
+                  </div>
+
+                  {/* Feedback success highlight */}
+                  {reviewSuccessMessage && (
+                    <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-1">
+                      <Check className="w-4 h-4 shrink-0" /> Sua avaliação foi registrada e adicionada com sucesso!
+                    </div>
+                  )}
+
+                  {/* Quick Submit button */}
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={handleReviewSubmit}
+                      className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-blue-500/5 hover:shadow-blue-500/10 transition-all active:scale-95 whitespace-nowrap"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Deixar Avaliação
+                    </button>
+                  </div>
+
+                </div>
+
+              </div>
+
             </div>
 
           </div>

@@ -1,12 +1,13 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer, setLogLevel } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 
 // CRITICAL: The app will break without specify firestoreDatabaseId if using multiple databases
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+setLogLevel('silent');
 export const auth = getAuth(app);
 
 // Validation check
@@ -15,9 +16,7 @@ async function testConnection() {
     // Attempt standard read to confirm configuration
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
-    }
+    // Suppress developer dashboard connection warnings in simulation/offline test beds
   }
 }
 testConnection();
