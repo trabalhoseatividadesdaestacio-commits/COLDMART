@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useColdmart } from '../context/ColdmartContext';
 import { Product } from '../types';
 import { 
-  CreditCard, QrCode, ClipboardCheck, ArrowRight, ShieldCheck, 
+  CreditCard, QrCode, ClipboardCheck, ArrowRight, ArrowLeft, ShieldCheck, 
   HelpCircle, Sparkles, Tag, Check, CheckCircle2, Ticket, AlertCircle
 } from 'lucide-react';
 
@@ -20,8 +20,11 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   onNavigateToMarketplace
 }) => {
   const { products, processPurchase, currentUser } = useColdmart();
-  const [targetProduct, setTargetProduct] = useState<Product | null>(null);
   
+  // Sincronizar produtos de forma puramente derivada para evitar o flash irritante de erro na renderização inicial
+  const targetProduct = useMemo(() => products.find(p => p.id === productId) || null, [products, productId]);
+  const bumpProduct = useMemo(() => products.find(p => p.id !== productId && p.status === 'active') || null, [products, productId]);
+
   // Checkout state
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'credit_card' | 'boleto'>('pix');
   const [buyerName, setBuyerName] = useState(currentUser?.name || '');
@@ -37,37 +40,37 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const [cardCvv, setCardCvv] = useState('');
   const [cardFocused, setCardFocused] = useState(false); // Used to simulate back-side of CC (CVV focus)
 
+  // Active Urgency Countdown Timer state
+  const [urgencyTime, setUrgencyTime] = useState(599); // 9 min 59 sec
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setUrgencyTime(prev => (prev > 0 ? prev - 1 : 599));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatUrgencyTime = () => {
+    const min = Math.floor(urgencyTime / 60);
+    const sec = urgencyTime % 60;
+    return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+  };
+
   // Order Bump state
   const [orderBumpEnabled, setOrderBumpEnabled] = useState(false);
-  const [bumpProduct, setBumpProduct] = useState<Product | null>(null);
 
   // Status simulation
   const [checkoutStatus, setCheckoutStatus] = useState<'idle' | 'processing' | 'success'>('idle');
   const [pixTimeLeft, setPixTimeLeft] = useState(300); // 5 min
   const [copiedPix, setCopiedPix] = useState(false);
   const [createdSaleId, setCreatedSaleId] = useState('');
-  const [finalTotalToPay, setFinalTotalToPay] = useState(0);
 
-  // Load product & bump product
-  useEffect(() => {
-    const mainP = products.find(p => p.id === productId);
-    if (mainP) {
-      setTargetProduct(mainP);
-      // Pick a related product for order bump that is NOT key product
-      const possibleBump = products.find(p => p.id !== productId && p.status === 'active');
-      if (possibleBump) {
-        setBumpProduct(possibleBump);
-      }
-    }
-  }, [productId, products]);
-
-  // Recalculate billing values
-  useEffect(() => {
-    if (!targetProduct) return;
+  // Calcular o valor total a pagar de forma síncrona
+  const finalTotalToPay = useMemo(() => {
+    if (!targetProduct) return 0;
     let total = targetProduct.price;
     if (couponApplied) total = total * 0.9;
     if (orderBumpEnabled && bumpProduct) total += bumpProduct.price;
-    setFinalTotalToPay(Number(total.toFixed(2)));
+    return Number(total.toFixed(2));
   }, [targetProduct, couponApplied, orderBumpEnabled, bumpProduct]);
 
   // Timer simulation for Pix
@@ -132,12 +135,27 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     setTimeout(() => setCopiedPix(false), 2000);
   };
 
+  // Se os produtos estiverem completamente vazios (por exemplo, carregando do Firebase), mostra um carregamento suave
+  if (products.length === 0) {
+    return (
+      <div className="text-center py-24 space-y-4">
+        <svg className="animate-spin h-8 w-8 text-blue-500 mx-auto" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        </svg>
+        <p className="text-sm text-gray-500 dark:text-zinc-400 font-medium">Carregando detalhes do checkout...</p>
+      </div>
+    );
+  }
+
   if (!targetProduct) {
     return (
-      <div className="text-center py-16">
+      <div className="text-center py-24">
         <AlertCircle className="w-10 h-10 text-rose-500 mx-auto mb-2" />
         <p className="text-sm text-gray-500 dark:text-zinc-400">Produto selecionado não está ativo ou não foi localizado.</p>
-        <button onClick={onNavigateToMarketplace} className="text-blue-500 hover:underline mt-2 text-xs">Voltar ao Marketplace</button>
+        <button onClick={onNavigateToMarketplace} className="text-blue-500 hover:underline mt-2 text-xs font-semibold">
+          Voltar ao Marketplace
+        </button>
       </div>
     );
   }
@@ -207,6 +225,27 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
               </button>
               <h2 className="text-2xl font-black font-display text-gray-950 dark:text-white">Checkout Seguro de Compra</h2>
               <p className="text-xs text-gray-500 dark:text-zinc-400">Insira suas informações de faturamento e compense com simulação instantânea.</p>
+            </div>
+
+            {/* Urgency Scarcity Notification Bar */}
+            <div className="bg-rose-500/10 border border-rose-500/15 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-rose-550 dark:text-rose-400 select-none shadow-md">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-rose-500/15 flex items-center justify-center text-rose-500 shrink-0">
+                  <Sparkles className="w-4.5 h-4.5 animate-pulse" />
+                </div>
+                <div className="text-left min-w-0 flex-1">
+                  <p className="font-extrabold text-[11px] tracking-wider uppercase">Oferta por Tempo Limitado! Seu carrinho expira em breve</p>
+                  <p className="text-[10px] text-gray-500 dark:text-zinc-400 mt-0.5 truncate">Não perca o bônus exclusivo de primeiro faturamento.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 shrink-0">
+                <span className="text-[9.5px] px-2 py-0.5 bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25 rounded-md font-bold font-mono uppercase tracking-wide">
+                  Apenas 3 Vagas Restantes
+                </span>
+                <span className="text-xs font-black font-mono bg-rose-600 text-white px-2.5 py-1.5 rounded-lg shadow-md shrink-0">
+                  {formatUrgencyTime()}
+                </span>
+              </div>
             </div>
 
             <form onSubmit={handleCheckoutSubmit} className="space-y-6">
@@ -507,29 +546,75 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                 </div>
               )}
 
-              {/* Submit trigger button */}
-              <button
-                type="submit"
-                disabled={checkoutStatus === 'processing'}
-                className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-indigo-600/50 text-white font-bold py-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-xl shadow-blue-500/10 cursor-pointer active:scale-[0.99] transition-all"
-              >
-                {checkoutStatus === 'processing' ? (
-                  <>
-                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    Aguarde, processando compensação...
-                  </>
-                ) : (
-                  <>
-                    Concluir Compra Segura • R$ {finalTotalToPay.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
+              {/* Actions Grid: Acquire product or Go Back */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={onNavigateToMarketplace}
+                  className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-850 text-gray-800 dark:text-zinc-200 font-bold py-4 px-6 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Voltar para a Página Anterior
+                </button>
+                <button
+                  type="submit"
+                  disabled={checkoutStatus === 'processing'}
+                  className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-indigo-600/50 text-white font-bold py-4 px-6 rounded-xl text-xs flex items-center justify-center gap-2 shadow-xl shadow-blue-500/10 cursor-pointer active:scale-[0.99] transition-all"
+                >
+                  {checkoutStatus === 'processing' ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Aguarde, processando compensação...
+                    </>
+                  ) : (
+                    <>
+                      Concluir Compra Segura • R$ {finalTotalToPay.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
 
             </form>
+
+            {/* Testimonials and Social Proof Board */}
+            <div className="mt-8 border-t border-gray-150 dark:border-zinc-900 pt-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-xs uppercase tracking-wider text-gray-400 dark:text-zinc-500">Depoimentos & Experiências de Alunos</h4>
+                <div className="flex items-center gap-1 text-xs text-amber-500 font-bold font-mono">
+                  <span>★ 4.9 / 5.0</span>
+                  <span className="text-zinc-400 font-normal">({targetProduct.ratingCount || 120} avaliações)</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 bg-white dark:bg-zinc-950 rounded-2xl border border-gray-150 dark:border-zinc-850 shadow-sm space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-gray-900 dark:text-zinc-200">Rômulo Albuquerque</span>
+                    <span className="text-[10px] text-emerald-500 font-bold font-mono flex items-center gap-0.5">
+                      <Check className="w-3 h-3 text-emerald-500" /> Aluno Verificado
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-650 dark:text-zinc-400 leading-normal italic">
+                    "Sensacional! O processamento do Pix foi instantâneo, os materiais vieram todos certinhos e em PDF. A plataforma é extremamente profissional e rápida."
+                  </p>
+                </div>
+                <div className="p-4 bg-white dark:bg-zinc-950 rounded-2xl border border-gray-150 dark:border-zinc-850 shadow-sm space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-gray-900 dark:text-zinc-200">Karina S. Gouveia</span>
+                    <span className="text-[10px] text-emerald-500 font-bold font-mono flex items-center gap-0.5">
+                      <Check className="w-3 h-3 text-emerald-500" /> Compra Segura
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-650 dark:text-zinc-400 leading-normal italic">
+                    "O suporte com o Tutor AI tirou minhas dúvidas de PostgreSQL e CORS em menos de 2 minutos. Com certeza voltarei a comprar os novos lançamentos daqui!"
+                  </p>
+                </div>
+              </div>
+            </div>
+
           </div>
 
           {/* Checkout Invoice sidebar Right */}
@@ -632,6 +717,20 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                 <div className="flex justify-between border-t border-gray-150 dark:border-zinc-900 pt-3 text-sm font-black text-zinc-900 dark:text-white leading-none">
                   <span>Total final faturado:</span>
                   <span>R$ {finalTotalToPay.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+
+              {/* Dynamic Guarantee Security Box */}
+              <div className="bg-gradient-to-tr from-amber-500/[0.04] to-orange-500/[0.02] border border-amber-500/20 p-4 rounded-xl space-y-1.5 text-center mt-3">
+                <div className="flex items-center justify-center gap-1.5 text-amber-600 dark:text-amber-400 font-bold text-xs uppercase tracking-wider">
+                  <ShieldCheck className="w-4.5 h-4.5 text-amber-500 shrink-0" />
+                  Selo de Garantia Assegurada
+                </div>
+                <p className="text-[10px] text-gray-450 dark:text-zinc-400 leading-relaxed text-left">
+                  Se por qualquer motivo você decidir que este treinamento não é para você, devolvemos 100% do seu pagamento em até 7 dias incondicionalmente.
+                </p>
+                <div className="inline-block text-[9px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2.5 py-1 rounded-md font-mono font-bold tracking-wide">
+                  PROTEÇÃO ATIVA POR LEI ATÉ {new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')}
                 </div>
               </div>
 

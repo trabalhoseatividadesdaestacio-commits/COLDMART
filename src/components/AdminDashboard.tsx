@@ -20,7 +20,7 @@ export const AdminDashboard: React.FC = () => {
 
   // Dynamic statistics
   const totalGMV = sales.reduce((acc, current) => acc + current.amount, 0);
-  const platformEarnings = sales.reduce((acc, current) => acc + (current.amount * 0.1), 0);
+  const platformEarnings = sales.reduce((acc, current) => acc + (current.adminCommission !== undefined ? current.adminCommission : current.amount * 0.05), 0);
   const pendingProducts = products.filter(p => p.status === 'pending_approval');
   const pendingTransfers = transfers.filter(t => t.status === 'pending');
 
@@ -48,7 +48,7 @@ export const AdminDashboard: React.FC = () => {
 
         <div className="border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-6 rounded-2xl space-y-2">
           <div className="flex justify-between items-center">
-            <span className="text-xs font-bold text-gray-400 dark:text-zinc-500 uppercase">Taxa Coldmart Retida (10%)</span>
+            <span className="text-xs font-bold text-gray-400 dark:text-zinc-500 uppercase">Repasse Administrador (5%)</span>
             <div className="p-2 rounded-xl bg-orange-500/10 text-orange-500"><Landmark className="w-4 h-4" /></div>
           </div>
           <p className="text-2xl font-black text-gray-950 dark:text-white font-mono">
@@ -215,7 +215,7 @@ export const AdminDashboard: React.FC = () => {
                 <th className="px-6 py-3.5">Produto faturado</th>
                 <th className="px-6 py-3.5">Comprador</th>
                 <th className="px-6 py-3.5">Valor Comércio</th>
-                <th className="px-6 py-3.5">Split Plataforma (10%)</th>
+                <th className="px-6 py-3.5">Split Plataforma (5%)</th>
                 <th className="px-6 py-3.5">Canal de Pagamento</th>
                 <th className="px-6 py-3.5">Data/Hora UTC</th>
               </tr>
@@ -230,7 +230,7 @@ export const AdminDashboard: React.FC = () => {
                     <span className="text-[10px] text-zinc-500">{sale.buyerEmail}</span>
                   </td>
                   <td className="px-6 py-4 font-mono font-bold text-gray-905 dark:text-white">R$ {sale.amount.toFixed(2)}</td>
-                  <td className="px-6 py-4 font-mono text-emerald-500 font-semibold">+ R$ {(sale.amount * 0.1).toFixed(2)}</td>
+                  <td className="px-6 py-4 font-mono text-emerald-500 font-semibold">+ R$ {(sale.adminCommission !== undefined ? sale.adminCommission : sale.amount * 0.05).toFixed(2)}</td>
                   <td className="px-6 py-4">
                     <span className="px-2 py-0.5 rounded bg-zinc-150 dark:bg-zinc-900 font-bold uppercase text-[9px] text-zinc-550 dark:text-zinc-400">
                       {sale.paymentMethod}

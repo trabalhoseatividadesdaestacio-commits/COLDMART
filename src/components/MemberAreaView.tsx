@@ -40,6 +40,10 @@ export const MemberAreaView: React.FC = () => {
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizScore, setQuizScore] = useState(0);
 
+  // Achievements & Custom certificate stats
+  const [quizPerfectBadge, setQuizPerfectBadge] = useState(false);
+  const [certStudentName, setCertStudentName] = useState(currentUser?.name || '');
+
   // Filter enrolled products
   const enrolledProducts = products.filter(p => buyerEnrolledIds.includes(p.id));
 
@@ -107,6 +111,28 @@ export const MemberAreaView: React.FC = () => {
     });
     return totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
   };
+
+  // Derived state for gamification
+  let totalCompletedLessons = 0;
+  let hasCompletedCourse = false;
+
+  enrolledProducts.forEach(prod => {
+    let courseComplete = true;
+    let localTotal = 0;
+    prod.modules.forEach(m => {
+      m.lessons.forEach(l => {
+        localTotal++;
+        if (l.completed) {
+          totalCompletedLessons++;
+        } else {
+          courseComplete = false;
+        }
+      });
+    });
+    if (localTotal > 0 && courseComplete) {
+      hasCompletedCourse = true;
+    }
+  });
 
   const handleRatingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,6 +213,23 @@ export const MemberAreaView: React.FC = () => {
 
     setQuizScore(correct);
     setQuizSubmitted(true);
+    
+    // Unlock perfect quiz badge if student scored 100%
+    if (correct === selectedProduct.quiz.length) {
+      setQuizPerfectBadge(true);
+    }
+  };
+
+  // Fast Auto-completion simulator for current course
+  const handleForceCompleteCourse = () => {
+    if (!selectedProduct) return;
+    selectedProduct.modules.forEach(m => {
+      m.lessons.forEach(l => {
+        if (!l.completed) {
+          toggleLessonCompletion(selectedProduct.id, l.id);
+        }
+      });
+    });
   };
 
   // Browser Print certificate trigger
@@ -212,7 +255,127 @@ export const MemberAreaView: React.FC = () => {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <div className="space-y-6">
+          
+          {/* Bento Gamification & Achievements Cabinet */}
+          {((totalCompletedLessons >= 1) || quizPerfectBadge || hasCompletedCourse) && (
+            <section className="bg-zinc-50 dark:bg-zinc-900/30 border border-gray-150 dark:border-zinc-900 p-5 rounded-3xl space-y-4 animate-in fade-in duration-300">
+              <div className="flex justify-between items-center flex-wrap gap-2">
+                <div>
+                  <h3 className="font-bold text-xs uppercase tracking-widest text-purple-600 dark:text-purple-400 flex items-center gap-1.5 font-mono">
+                    <Award className="w-4 h-4 text-purple-500 shrink-0" />
+                    Gamificação • Minhas Conquistas Escolares
+                  </h3>
+                  <p className="text-[11px] text-gray-500 dark:text-zinc-400 mt-0.5">Assista às vídeo-aulas, gabarite os questionários simulados e emita seus diplomas credenciados.</p>
+                </div>
+                <div className="text-[10px] bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold font-mono px-3 py-1 rounded-full border border-purple-500/25 select-none shrink-0">
+                  CREDENCIAIS: { (totalCompletedLessons >= 1 ? 1 : 0) + (totalCompletedLessons >= 3 ? 1 : 0) + (quizPerfectBadge ? 1 : 0) + (hasCompletedCourse ? 1 : 0) } / 4 DESBLOQUEADAS
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                
+                {/* Badge 1: Pioneiro */}
+                <div className={`p-3.5 rounded-2xl border shadow-sm flex items-center gap-3 transition-all ${
+                  totalCompletedLessons >= 1 
+                    ? 'bg-white dark:bg-zinc-950 border-gray-150 dark:border-zinc-850' 
+                    : 'bg-zinc-50/50 dark:bg-zinc-900/10 border-dashed border-gray-200 dark:border-zinc-900/60 opacity-60'
+                }`}>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    totalCompletedLessons >= 1 ? 'bg-blue-500/10 text-blue-500' : 'bg-gray-100 dark:bg-zinc-900 text-zinc-400'
+                  }`}>
+                    <BookOpen className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-black dark:text-zinc-100 truncate">Pioneiro Aluno</p>
+                      <span className={`text-[8px] px-1 py-0.2 rounded font-black font-mono uppercase ${
+                        totalCompletedLessons >= 1 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-400'
+                      }`}>
+                        {totalCompletedLessons >= 1 ? 'Liberado' : 'Pedente'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-zinc-400 leading-snug">Iniciou estudos na Coldmart</p>
+                  </div>
+                </div>
+
+                {/* Badge 2: Maratonista */}
+                <div className={`p-3.5 rounded-2xl border shadow-sm flex items-center gap-3 transition-all ${
+                  totalCompletedLessons >= 3 
+                    ? 'bg-white dark:bg-zinc-950 border-gray-150 dark:border-zinc-850' 
+                    : 'bg-zinc-50/50 dark:bg-zinc-900/10 border-dashed border-gray-200 dark:border-zinc-900/60 opacity-60'
+                }`}>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    totalCompletedLessons >= 3 ? 'bg-orange-500/10 text-orange-500' : 'bg-gray-100 dark:bg-zinc-900 text-zinc-400'
+                  }`}>
+                    <Play className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-black dark:text-zinc-100 truncate">Maratonista</p>
+                      <span className={`text-[8px] px-1 py-0.2 rounded font-black font-mono uppercase ${
+                        totalCompletedLessons >= 3 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-400'
+                      }`}>
+                        {totalCompletedLessons >= 3 ? 'Liberado' : '3 aulas req.'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-zinc-400 leading-snug">Completou {totalCompletedLessons}/3 aulas</p>
+                  </div>
+                </div>
+
+                {/* Badge 3: Cérebro de Aço */}
+                <div className={`p-3.5 rounded-2xl border shadow-sm flex items-center gap-3 transition-all ${
+                  quizPerfectBadge 
+                    ? 'bg-white dark:bg-zinc-950 border-gray-150 dark:border-zinc-850' 
+                    : 'bg-zinc-50/50 dark:bg-zinc-900/10 border-dashed border-gray-200 dark:border-zinc-900/60 opacity-60'
+                }`}>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    quizPerfectBadge ? 'bg-yellow-500/10 text-yellow-500' : 'bg-gray-100 dark:bg-zinc-900 text-zinc-400'
+                  }`}>
+                    <Sparkles className="w-5 h-5 font-black" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-black dark:text-zinc-100 truncate">Cérebro de Aço</p>
+                      <span className={`text-[8px] px-1 py-0.2 rounded font-black font-mono uppercase ${
+                        quizPerfectBadge ? 'bg-emerald-500/10 text-emerald-600' : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-400'
+                      }`}>
+                        {quizPerfectBadge ? 'Liberado' : 'Falta Quiz 100%'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-zinc-400 leading-snug">Acertou 100% em um Quiz</p>
+                  </div>
+                </div>
+
+                {/* Badge 1: Graduado */}
+                <div className={`p-3.5 rounded-2xl border shadow-sm flex items-center gap-3 transition-all ${
+                  hasCompletedCourse 
+                    ? 'bg-white dark:bg-zinc-950 border-gray-150 dark:border-zinc-850' 
+                    : 'bg-zinc-50/50 dark:bg-zinc-900/10 border-dashed border-gray-200 dark:border-zinc-900/60 opacity-60'
+                }`}>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    hasCompletedCourse ? 'bg-green-500/10 text-green-500' : 'bg-gray-100 dark:bg-zinc-900 text-zinc-400'
+                  }`}>
+                    <Award className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-black dark:text-zinc-100 truncate">Honrado Graduado</p>
+                      <span className={`text-[8px] px-1 py-0.2 rounded font-black font-mono uppercase ${
+                        hasCompletedCourse ? 'bg-emerald-500/10 text-emerald-600' : 'bg-zinc-150 dark:bg-zinc-900 text-zinc-400'
+                      }`}>
+                        {hasCompletedCourse ? 'Liberado' : 'Concluir 100%'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-zinc-400 leading-snug">Concluiu qualquer curso</p>
+                  </div>
+                </div>
+
+              </div>
+            </section>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           
           {/* Courses / Sidebar navigation Left (1 Column) */}
           <aside className="space-y-6 lg:col-span-1">
@@ -645,45 +808,101 @@ export const MemberAreaView: React.FC = () => {
                     )}
 
                     {/* DIGITAL CERTIFICATE CABINET */}
-                    {activeTab === 'certificate' && (
-                      <div className="space-y-6">
-                        <div className="space-y-2 text-center max-w-md mx-auto">
-                          <Award className="w-10 h-10 text-amber-500 mx-auto animate-bounce" />
-                          <h3 className="font-bold text-gray-900 dark:text-white text-base">Reivindicar Certificado de Conclusão</h3>
-                          <p className="text-xs text-zinc-550 dark:text-zinc-400 leading-relaxed">
-                            A Coldmart homologa diplomas inteligentes com autenticidade eletrônica garantida. Preencha seu nome e gere seu documento instantâneo:
+                    {activeTab === 'certificate' && selectedProduct && calculateCompletion(selectedProduct) < 100 && (
+                      <div className="space-y-6 max-w-xl mx-auto py-4 animate-in fade-in">
+                        <div className="text-center space-y-3">
+                          <div className="w-16 h-16 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto border border-amber-500/20">
+                            <Award className="w-8 h-8 text-amber-500 animate-pulse" />
+                          </div>
+                          <h3 className="font-extrabold text-gray-955 dark:text-white text-base">Diploma Temporariamente Bloqueado</h3>
+                          <p className="text-xs text-gray-500 dark:text-zinc-400 max-w-md mx-auto leading-relaxed">
+                            Você concluiu <strong className="text-amber-500">{calculateCompletion(selectedProduct)}%</strong> deste treinamento. Para requisitar o seu diploma oficial registrado pela Coldmart, você precisará assistir a todas as aulas teóricas e marcá-las como concluídas.
                           </p>
                         </div>
 
+                        {/* Progress Bar Display */}
+                        <div className="space-y-1.5 p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-gray-150 dark:border-zinc-850">
+                          <div className="flex justify-between text-[11px] font-bold">
+                            <span className="text-zinc-500 font-mono">PROGRESSO DE ESTUDO ATUAL</span>
+                            <span className="text-amber-500 font-mono text-xs">{calculateCompletion(selectedProduct)}% / 100%</span>
+                          </div>
+                          <div className="h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-amber-500 rounded-full transition-all duration-300" 
+                              style={{ width: `${calculateCompletion(selectedProduct)}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* reviewer simulated cheat bypass */}
+                        <div className="p-4 rounded-2xl bg-purple-500/5 border border-purple-500/15 space-y-2 text-center mt-3 shadow-sm">
+                          <p className="text-[10px] text-purple-605 dark:text-purple-400 font-extrabold uppercase tracking-wide">🔬 Depurador Coldmart (Testar Ferramenta)</p>
+                          <p className="text-[11px] text-zinc-505 dark:text-zinc-400 leading-relaxed font-sans">
+                            Quer testar e simular a emissão do PDF impresso agora mesmo sem ter que assistir todas as aulas? Clique no botão abaixo para concluir todos os módulos de forma automática neste simulador:
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleForceCompleteCourse}
+                            className="bg-purple-655 hover:bg-purple-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md inline-flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            Simular Conclusão do Curso Instantaneamente
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === 'certificate' && selectedProduct && calculateCompletion(selectedProduct) >= 100 && (
+                      <div className="space-y-6 animate-in fade-in">
+                          <div className="space-y-2 text-center max-w-md mx-auto">
+                            <Award className="w-10 h-10 text-amber-500 mx-auto animate-bounce" />
+                            <h3 className="font-extrabold text-gray-955 dark:text-white text-base font-display">Parabéns! Reivindique Seu Certificado</h3>
+                            <p className="text-xs text-zinc-550 dark:text-zinc-400 leading-relaxed">
+                              O sistema da Coldmart validou suas etapas curriculares. Personalize o nome do formando abaixo e emita o diploma:
+                            </p>
+                          </div>
+
+                          {/* Name customizer */}
+                          <div className="max-w-md mx-auto">
+                            <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono text-center">NOME COMPLETO DO GRADUANDO NO DIPLOMA</label>
+                            <input
+                              type="text"
+                              value={certStudentName}
+                              onChange={(e) => setCertStudentName(e.target.value)}
+                              placeholder="Digite o nome para o diploma"
+                              className="w-full bg-zinc-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-805 rounded-xl px-4 py-2.5 text-xs text-center font-bold focus:outline-none focus:border-amber-500 dark:text-white uppercase mb-4"
+                            />
+                          </div>
+
                         {/* Interactive Gold Certificate mock block */}
-                        <div className="border border-amber-500/25 p-2 bg-amber-500/[0.01] rounded-2xl">
-                          <div id="print_section" className="border-4 border-double border-amber-500 rounded-xl bg-white text-zinc-900 p-8 flex flex-col justify-between aspect-[1.414/1] text-center space-y-4">
+                        <div className="border border-amber-500/25 p-2 bg-amber-500/[0.01] rounded-2xl max-w-2xl mx-auto">
+                          <div id="print_section" className="border-4 border-double border-amber-500 rounded-xl bg-white text-zinc-900 p-8 flex flex-col justify-between aspect-[1.414/1] text-center space-y-4 shadow-xl">
                             
                             {/* Logo inside */}
                             <div className="flex justify-between items-start">
-                              <span className="text-[10px] font-bold tracking-widest text-zinc-400 font-mono">ID: SAAS-COLDMART-CERT</span>
-                              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white text-xs">CM</div>
+                              <span className="text-[9px] font-bold tracking-widest text-zinc-400 font-mono">HASH: CM_VALIDATOR_{selectedProduct?.id}</span>
+                              <div className="w-6 h-6 rounded-lg bg-zinc-900 flex items-center justify-center font-bold text-white text-[10px]">CM</div>
                             </div>
 
-                            <div className="space-y-2">
-                              <span className="text-[10px] font-black tracking-[0.2em] uppercase text-amber-600">CERTIFICADO DE EXCELÊNCIA</span>
-                              <h4 className="font-serif font-bold text-2xl italic text-gray-900 leading-tight">{currentUser.name}</h4>
-                              <p className="text-xs text-zinc-550 leading-relaxed max-w-sm mx-auto">
-                                Concluiu com distinção acadêmica todas as fases exigidas do treinamento digital <strong>{selectedProduct.title}</strong>, totalizando 12 horas curriculares.
+                            <div className="space-y-1">
+                              <span className="text-[9px] font-black tracking-[0.25em] uppercase text-amber-600 block">DIPLOMA OFICIAL DE CONCLUSÃO CORRESPONDENTE</span>
+                              <h4 className="font-serif font-extrabold text-2xl italic text-gray-900 leading-tight uppercase">{certStudentName || currentUser.name}</h4>
+                              <p className="text-[11.5px] text-zinc-650 leading-relaxed max-w-sm mx-auto font-sans">
+                                Certificamos para todos os fins acadêmicos e mercadológicos que o aluno portador deste documento concluiu com excelência 100% das etapas do treinamento digital de <strong>{selectedProduct?.title}</strong>, ministrado pelo docente <strong>{selectedProduct?.creatorName}</strong>.
                               </p>
                             </div>
 
                             <div className="flex justify-between items-end pt-4 text-[9px] font-mono text-zinc-400">
-                              <div className="text-left">
-                                <p className="border-t border-zinc-200 pt-1 font-semibold text-zinc-700">COORDENADOR DE CURSO</p>
-                                <p>Coldmart Compliance</p>
+                              <div className="text-left w-2/5 border-t border-zinc-200 pt-1">
+                                <p className="font-semibold text-zinc-750">DIRETORIA ACADÊMICA</p>
+                                <p>Antigravity Compliance Coldmart</p>
                               </div>
-                              <div className="flex flex-col items-center">
-                                <div className="w-8 h-8 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-600 flex items-center justify-center font-bold font-serif text-[10px]">SEAL</div>
-                                <span className="mt-1 font-mono text-[8px]">HASH: CM-{selectedProduct.id}-{currentUser.id.substring(0, 5)}</span>
+                              <div className="flex flex-col items-center w-1/5 shrink-0">
+                                <div className="w-7 h-7 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 flex items-center justify-center font-bold font-serif text-[10px]">SOLO</div>
+                                <span className="mt-1 font-mono text-[7px] truncate uppercase">ID: CM-{selectedProduct?.id.substring(0, 4)}</span>
                               </div>
-                              <div className="text-right">
-                                <p className="border-t border-zinc-200 pt-1 font-semibold text-zinc-700">DATA DE EMISSÃO</p>
+                              <div className="text-right w-2/5 border-t border-zinc-200 pt-1">
+                                <p className="font-semibold text-zinc-750">DATA DE CONCLUSÃO</p>
                                 <p>{new Date().toLocaleDateString('pt-BR')}</p>
                               </div>
                             </div>
@@ -694,11 +913,12 @@ export const MemberAreaView: React.FC = () => {
                         {/* Actions */}
                         <div className="flex justify-center">
                           <button
+                            type="button"
                             onClick={handlePrintCertificate}
-                            className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-blue-500/10 cursor-pointer"
+                            className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 px-6 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/15 cursor-pointer active:scale-[0.98] transition-all"
                           >
                             <Printer className="w-4 h-4" />
-                            Imprimir ou Salvar em PDF
+                            Imprimir ou Emitir PDF Oficial
                           </button>
                         </div>
                       </div>
@@ -714,7 +934,8 @@ export const MemberAreaView: React.FC = () => {
           </main>
 
         </div>
-      )}
+      </div>
+    )}
 
     </div>
   );

@@ -70,6 +70,7 @@ export interface Sale {
   affiliateCommission: number;
   affiliateId: string | null;
   date: string;
+  adminCommission?: number;
 }
 
 export interface AffiliationRule {

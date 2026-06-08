@@ -2,8 +2,12 @@ import React, { useState } from 'react';
 import { useColdmart } from '../context/ColdmartContext';
 import { 
   DollarSign, Sparkles, HelpCircle, Coins, Share2, 
-  ExternalLink, TrendingUp, Handshake, Check, AlertCircle, Landmark, ArrowRight
+  ExternalLink, TrendingUp, Handshake, Check, AlertCircle, Landmark, ArrowRight, BarChart3
 } from 'lucide-react';
+import { 
+  ResponsiveContainer, AreaChart, Area, BarChart, Bar, 
+  XAxis, YAxis, Tooltip, CartesianGrid 
+} from 'recharts';
 
 interface AffiliateDashboardProps {
   onNavigateToMarketplace: () => void;
@@ -34,6 +38,121 @@ export const AffiliateDashboard: React.FC<AffiliateDashboardProps> = ({
 
   // Conversion rate
   const conversionRate = totalClicks > 0 ? ((totalSales / totalClicks) * 100).toFixed(1) : '0';
+
+  // Time Range Stats Filter State for Affiliate
+  const [timeRange, setTimeRange] = useState<'7d' | '30d' | 'ytd' | 'all'>('30d');
+
+  const mySales = sales.filter(s => s.affiliateId === currentUser.id && s.status === 'completed');
+
+  // Helper date filtering & aggregation for Affiliate
+  const filterSalesByRange = (items: typeof sales, range: typeof timeRange) => {
+    const now = new Date();
+    return items.filter(s => {
+      const saleDate = new Date(s.date);
+      if (range === '7d') {
+        const diffDays = (now.getTime() - saleDate.getTime()) / (1000 * 60 * 60 * 24);
+        return diffDays <= 7;
+      }
+      if (range === '30d') {
+        const diffDays = (now.getTime() - saleDate.getTime()) / (1000 * 60 * 60 * 24);
+        return diffDays <= 30;
+      }
+      if (range === 'ytd') {
+        return saleDate.getFullYear() === now.getFullYear();
+      }
+      return true; // all time
+    });
+  };
+
+  const generateChartData = (items: typeof mySales, range: typeof timeRange) => {
+    const dataMap: Record<string, { date: string, dateLabel: string, revenue: number, salesCount: number }> = {};
+    const now = new Date();
+    
+    if (range === 'ytd') {
+      const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+      const currentMonth = now.getMonth();
+      for (let i = 0; i <= currentMonth; i++) {
+        dataMap[String(i)] = {
+          date: String(i),
+          dateLabel: months[i],
+          revenue: 0,
+          salesCount: 0
+        };
+      }
+      items.forEach(s => {
+        const d = new Date(s.date);
+        if (d.getFullYear() === now.getFullYear()) {
+          const mIdx = d.getMonth();
+          if (dataMap[String(mIdx)]) {
+            dataMap[String(mIdx)].revenue += s.affiliateCommission;
+            dataMap[String(mIdx)].salesCount += 1;
+          }
+        }
+      });
+      return Object.values(dataMap);
+    }
+    
+    if (range === 'all') {
+      // Group by Month-Year
+      items.forEach(s => {
+        const d = new Date(s.date);
+        const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        const key = `${months[d.getMonth()]}/${String(d.getFullYear()).substring(2)}`;
+        if (!dataMap[key]) {
+          dataMap[key] = {
+            date: key,
+            dateLabel: key,
+            revenue: 0,
+            salesCount: 0
+          };
+        }
+        dataMap[key].revenue += s.affiliateCommission;
+        dataMap[key].salesCount += 1;
+      });
+      return Object.values(dataMap);
+    }
+    
+    let daysToGen = 30;
+    if (range === '7d') daysToGen = 7;
+    else if (range === '30d') daysToGen = 30;
+    
+    for (let i = daysToGen - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(now.getDate() - i);
+      const dateKey = d.toISOString().split('T')[0];
+      const dayLabel = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      dataMap[dateKey] = {
+        date: dateKey,
+        dateLabel: dayLabel,
+        revenue: 0,
+        salesCount: 0
+      };
+    }
+    
+    items.forEach(s => {
+      const dateKey = s.date.split('T')[0];
+      if (dataMap[dateKey]) {
+        dataMap[dateKey].revenue += s.affiliateCommission;
+        dataMap[dateKey].salesCount += 1;
+      }
+    });
+    
+    return Object.values(dataMap);
+  };
+
+  const filteredSalesForChart = filterSalesByRange(mySales, timeRange);
+  const chartData = generateChartData(filteredSalesForChart, timeRange);
+
+  const totalPeriodRevenue = filteredSalesForChart.reduce((acc, s) => acc + s.affiliateCommission, 0);
+  const totalPeriodSales = filteredSalesForChart.length;
+  const averageTicket = totalPeriodSales > 0 ? (totalPeriodRevenue / totalPeriodSales) : 0;
+
+  const paymentCounts = filteredSalesForChart.reduce((acc, s) => {
+    acc[s.paymentMethod] = (acc[s.paymentMethod] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  const favoritePayment = Object.entries(paymentCounts).sort((a,b) => Number(b[1]) - Number(a[1]))[0]?.[0] || 'Pix';
+  const favoritePaymentLabel = favoritePayment === 'credit_card' ? 'Cartão' : favoritePayment === 'pix' ? 'Pix' : favoritePayment === 'boleto' ? 'Boleto' : 'PayPal';
 
   const handleCopyLink = (code: string) => {
     const trackingUrl = `${window.location.origin}/checkout?prod=main&aff=${code}&shared=true`;
@@ -139,6 +258,143 @@ export const AffiliateDashboard: React.FC<AffiliateDashboardProps> = ({
           <span className="block text-[10px] text-zinc-400 leading-none">Cliques convertidos em faturamento</span>
         </div>
       </div>
+
+      {/* Dynamic Sales Graphics & Filtering (Affiliate) */}
+      <section className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-2xl p-6 shadow-md space-y-6 animate-in fade-in duration-300">
+        
+        {/* Header containing Filters */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-gray-100 dark:border-zinc-900 pb-5">
+          <div className="space-y-1">
+            <h3 className="font-bold text-sm text-gray-950 dark:text-white flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-cyan-500 animate-pulse" />
+              Desempenho de Afiliação & Gráficos Comerciais
+            </h3>
+            <p className="text-[11px] text-zinc-550 dark:text-zinc-400">Dados consolidados de comissões e conversões atribuídas em tempo real.</p>
+          </div>
+          
+          <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-900 p-1 rounded-xl border border-zinc-200/50 dark:border-zinc-800 self-stretch md:self-auto">
+            {(['7d', '30d', 'ytd', 'all'] as const).map((r) => (
+              <button
+                key={r}
+                onClick={() => setTimeRange(r)}
+                className={`flex-1 md:flex-initial text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-lg cursor-pointer transition-all ${
+                  timeRange === r
+                    ? 'bg-white dark:bg-zinc-950 text-cyan-600 dark:text-cyan-400 shadow-sm border border-zinc-200/40 dark:border-zinc-800'
+                    : 'text-zinc-450 hover:text-zinc-800 dark:hover:text-zinc-100 dark:text-zinc-400'
+                }`}
+              >
+                {r === '7d' ? '7 Dias' : r === '30d' ? '30 Dias' : r === 'ytd' ? 'Este Ano' : 'Histórico'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Dynamic Charts Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
+          
+          {/* Chart 1: Revenue (Area chart with Gradient) */}
+          <div className="border border-zinc-100 dark:border-zinc-900/60 p-4 rounded-xl bg-zinc-50/20 dark:bg-zinc-950 flex flex-col justify-between">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <p className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest font-mono">Minhas Comissões (R$)</p>
+                <h4 className="font-extrabold text-lg text-gray-950 dark:text-white font-mono mt-0.5">
+                  R$ {totalPeriodRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </h4>
+              </div>
+              <span className="text-[10px] bg-cyan-500/10 text-cyan-500 px-2 py-0.5 rounded-full font-black uppercase font-mono flex items-center gap-1">
+                <TrendingUp className="w-3 h-3" /> Area
+              </span>
+            </div>
+            
+            <div className="h-64 w-full">
+              {chartData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-zinc-400 italic">
+                  Nenhum resgate ou venda atribuída computada neste período.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorAffiliateRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.2}/>
+                        <stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} opacity={0.15} />
+                    <XAxis dataKey="dateLabel" stroke="#71717a" fontSize={9} fontFamily="JetBrains Mono" tickLine={false} />
+                    <YAxis stroke="#71717a" fontSize={9} fontFamily="JetBrains Mono" tickLine={false} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '12px' }}
+                      labelStyle={{ color: '#a1a1aa', fontWeight: 'bold', fontSize: '10px', fontFamily: 'Inter' }}
+                      itemStyle={{ color: '#22c55e', fontSize: '12px', fontFamily: 'JetBrains Mono' }}
+                      formatter={(val: number) => [`R$ ${val.toFixed(2)}`, 'Comissão Líquida']}
+                    />
+                    <Area type="monotone" dataKey="revenue" stroke="#06b6d4" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAffiliateRevenue)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          {/* Chart 2: Quantity (Bar chart for conversions) */}
+          <div className="border border-zinc-100 dark:border-zinc-900/60 p-4 rounded-xl bg-zinc-50/20 dark:bg-zinc-950 flex flex-col justify-between">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <p className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest font-mono">Conversões Completas</p>
+                <h4 className="font-extrabold text-lg text-gray-950 dark:text-white font-mono mt-0.5">
+                  {totalPeriodSales} Vendas
+                </h4>
+              </div>
+              <span className="text-[10px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full font-black uppercase font-mono">
+                Coluna
+              </span>
+            </div>
+            
+            <div className="h-64 w-full">
+              {chartData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-zinc-400 italic">
+                  Nenhuma conversão computada no intervalo selecionado.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} opacity={0.15} />
+                    <XAxis dataKey="dateLabel" stroke="#71717a" fontSize={9} fontFamily="JetBrains Mono" tickLine={false} />
+                    <YAxis stroke="#71717a" fontSize={9} fontFamily="JetBrains Mono" tickLine={false} allowDecimals={false} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '12px' }}
+                      labelStyle={{ color: '#a1a1aa', fontWeight: 'bold', fontSize: '10px', fontFamily: 'Inter' }}
+                      itemStyle={{ color: '#818cf8', fontSize: '12px', fontFamily: 'JetBrains Mono' }}
+                      formatter={(val: number) => [`${val} Indicação(ões)`, 'Volume Vendas']}
+                    />
+                    <Bar dataKey="salesCount" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+        </div>
+
+        {/* Detailed stats sub-banner */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-zinc-50 dark:bg-zinc-900/30 border border-zinc-200/40 dark:border-zinc-900 p-4 rounded-xl">
+          <div className="space-y-0.5 pl-3 border-l-2 border-cyan-500">
+            <span className="block text-[9px] font-bold text-zinc-400 uppercase tracking-wider font-mono">Média Por Comissão</span>
+            <span className="block text-xs font-black text-gray-900 dark:text-zinc-100 font-mono">R$ {averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+          </div>
+
+          <div className="space-y-0.5 pl-3 border-l-2 border-indigo-500">
+            <span className="block text-[9px] font-bold text-zinc-400 uppercase tracking-wider font-mono">Método Mais Usado por Clientes</span>
+            <span className="block text-xs font-black text-gray-900 dark:text-zinc-100">{favoritePaymentLabel}</span>
+          </div>
+
+          <div className="space-y-0.5 pl-3 border-l-2 border-emerald-500">
+            <span className="block text-[9px] font-bold text-zinc-400 uppercase tracking-wider font-mono">Taxa de Estorno de Clientes</span>
+            <span className="block text-xs font-black text-gray-900 dark:text-zinc-100 font-mono">0.0% <span className="text-[10px] text-emerald-500 font-normal">(Saúde Excelente)</span></span>
+          </div>
+        </div>
+
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         

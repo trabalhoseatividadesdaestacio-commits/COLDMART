@@ -562,8 +562,8 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         finalPrice = finalPrice * 0.9;
       }
 
-      // 10% platform fee
-      const platformFee = finalPrice * 0.1;
+      // 5% administrator commission
+      const adminCommission = finalPrice * 0.05;
       let affiliateCommission = 0;
       let affiliateId: string | null = null;
 
@@ -572,11 +572,12 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const affRule = affiliations.find(a => a.linkCode === params.affiliateCode && a.productId === prod.id);
         if (affRule) {
           affiliateId = affRule.affiliateId;
-          affiliateCommission = (finalPrice - platformFee) * (affRule.commissionPercent / 100);
+          // Split calculation based on the product’s commission percent of the product price
+          affiliateCommission = finalPrice * (affRule.commissionPercent / 100);
         }
       }
 
-      const creatorCommission = finalPrice - platformFee - affiliateCommission;
+      const creatorCommission = finalPrice - adminCommission - affiliateCommission;
 
       const newSale: Sale = {
         id: `${saleId}_${prod.id}`,
@@ -590,6 +591,7 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         paymentMethod: params.paymentMethod,
         creatorCommission,
         affiliateCommission,
+        adminCommission,
         affiliateId,
         date: dateStr,
       };
@@ -615,6 +617,24 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             return updated;
           }
           return p;
+        }));
+
+        // Update admin balance with the 5% administrative commission
+        setUsers(prev => prev.map(u => {
+          if (u.role === 'admin') {
+            const updated = {
+              ...u,
+              balance: Number((u.balance + adminCommission).toFixed(2))
+            };
+            if (db) {
+              updateDoc(doc(db, 'users', u.id), { balance: updated.balance }).catch(() => {});
+            }
+            if (currentUser && currentUser.id === u.id) {
+              setCurrentUser(updated);
+            }
+            return updated;
+          }
+          return u;
         }));
 
         // Update creator balance
@@ -922,7 +942,7 @@ export const ColdmartProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             } else if (textLower.includes('comissao') || textLower.includes('afiliado') || textLower.includes('link') || textLower.includes('venda')) {
               aiAnswerText += 'Sobre o programa comercial de afiliados: as porcentagens de comissão variam entre 10% e 80% definidas pelo autor. Todas as indicações faturadas com seu código exclusivo geram créditos automáticos na sua carteira virtual na hora da compensação.';
             } else if (textLower.includes('taxa') || textLower.includes('custo') || textLower.includes('pagar') || textLower.includes('mensalidade')) {
-              aiAnswerText += 'A Coldmart adota um modelo de ganho mútuo: cobramos apenas 10% de taxa por checkout aprovado. Não coletamos anuidades, mensalidades ou mensalidades fixas para liberar o visualizador e construtor de ofertas.';
+              aiAnswerText += 'A Coldmart adota um modelo de ganho mútuo: cobramos apenas 5% de taxa por checkout aprovado, que é destinado integralmente ao administrador. Não coletamos anuidades, mensalidades ou comissões adicionais fixas para liberar o visualizador e construtor de ofertas.';
             } else if (textLower.includes('curso') || textLower.includes('membros') || textLower.includes('aula') || textLower.includes('video') || textLower.includes('certificado')) {
               aiAnswerText += 'Referente à Área de Membros: as aulas concluídas acumulam pontuação de progresso. Após assistir todos os conteúdos obrigatórios e responder os Quizzes, seu Certificado Executivo Oficial é emitido e anexado para transferência.';
             } else if (textLower.includes('pagina') || textLower.includes('builder') || textLower.includes('landing') || textLower.includes('copiar') || textLower.includes('criar')) {
